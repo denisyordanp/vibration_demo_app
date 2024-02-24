@@ -5,6 +5,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.os.VibratorManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -46,11 +47,9 @@ import androidx.navigation.compose.rememberNavController
 import com.denisyordanp.vibrationdemoapp.ui.theme.VibrationDemoAppTheme
 
 class MainActivity : ComponentActivity() {
-    @SuppressLint("NewApi")
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        val vibrator = getSystemService(VIBRATOR_SERVICE) as Vibrator
 
         setContent {
             VibrationDemoAppTheme {
@@ -63,50 +62,13 @@ class MainActivity : ComponentActivity() {
                             .padding(16.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        val navController = rememberNavController()
-                        NavHost(navController = navController, startDestination = DestinationsScreen.MAIN) {
-                            composable(DestinationsScreen.MAIN) {
-                                MainScreen(
-                                    onCustom = {
-                                               navController.navigate(DestinationsScreen.CUSTOM)
-                                    },
-                                    onDefault = {
-                                        navController.navigate(DestinationsScreen.DEFAULT)
-                                    }
-                                )
-                            }
-
-                            composable(DestinationsScreen.DEFAULT) {
-                                DefaultVibrationScreen(
-                                    onClickVibration = {
-                                        handleDefaultEffect(VibrationEffect.EFFECT_CLICK)
-                                    },
-                                    onDoubleClickVibration = {
-                                        handleDefaultEffect(VibrationEffect.EFFECT_DOUBLE_CLICK)
-                                    },
-                                    onHeavyClickVibration = {
-                                        handleDefaultEffect(VibrationEffect.EFFECT_CLICK)
-                                    },
-                                    onTickVibration = {
-                                        handleDefaultEffect(VibrationEffect.EFFECT_TICK)
-                                    },
-                                    onBack = {
-                                        navController.popBackStack()
-                                    }
-                                )
-                            }
-
-                            composable(DestinationsScreen.CUSTOM) {
-                                CustomVibrationScreen(
-                                    onVibrate = { duration, strength, defaultStrength ->
-                                        val vibrationEffect = VibrationEffect.createOneShot(duration.toLong(), if (defaultStrength) VibrationEffect.DEFAULT_AMPLITUDE else strength)
-                                        vibrator.vibrate(vibrationEffect)
-                                    },
-                                    onBack = {
-                                        navController.popBackStack()
-                                    }
-                                )
-                            }
+                        if (getVibrator().hasVibrator()) {
+                            MainContent()
+                        } else {
+                            Text(
+                                text = "This device doesn't support vibration.",
+                                style = TextStyle.Default.copy(fontWeight = FontWeight.Bold)
+                            )
                         }
                     }
                 }
@@ -114,12 +76,74 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    @SuppressLint("NewApi")
+    @Composable
+    private fun MainContent() {
+        val navController = rememberNavController()
+
+        NavHost(
+            navController = navController,
+            startDestination = DestinationsScreen.MAIN
+        ) {
+            composable(DestinationsScreen.MAIN) {
+                MainScreen(
+                    onCustom = {
+                        navController.navigate(DestinationsScreen.CUSTOM)
+                    },
+                    onDefault = {
+                        navController.navigate(DestinationsScreen.DEFAULT)
+                    }
+                )
+            }
+
+            composable(DestinationsScreen.DEFAULT) {
+                DefaultVibrationScreen(
+                    onClickVibration = {
+                        handleDefaultEffect(VibrationEffect.EFFECT_CLICK)
+                    },
+                    onDoubleClickVibration = {
+                        handleDefaultEffect(VibrationEffect.EFFECT_DOUBLE_CLICK)
+                    },
+                    onHeavyClickVibration = {
+                        handleDefaultEffect(VibrationEffect.EFFECT_CLICK)
+                    },
+                    onTickVibration = {
+                        handleDefaultEffect(VibrationEffect.EFFECT_TICK)
+                    },
+                    onBack = {
+                        navController.popBackStack()
+                    }
+                )
+            }
+
+            composable(DestinationsScreen.CUSTOM) {
+                CustomVibrationScreen(
+                    onVibrate = { duration, strength, defaultStrength ->
+                        val vibrationEffect = VibrationEffect.createOneShot(
+                            duration.toLong(),
+                            if (defaultStrength) VibrationEffect.DEFAULT_AMPLITUDE else strength
+                        )
+                        getVibrator().vibrate(vibrationEffect)
+                    },
+                    onBack = {
+                        navController.popBackStack()
+                    }
+                )
+            }
+        }
+    }
+
+    private fun getVibrator() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        (getSystemService(VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
+    } else {
+        getSystemService(VIBRATOR_SERVICE) as Vibrator
+    }
+
     @RequiresApi(Build.VERSION_CODES.Q)
     private fun handleDefaultEffect(effect: Int) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val vibrationEffect = VibrationEffect.createPredefined(effect)
-            val vibrator = getSystemService(VIBRATOR_SERVICE) as Vibrator
-            vibrator.vibrate(vibrationEffect)
+            getVibrator().vibrate(vibrationEffect)
         } else {
             Toast.makeText(this, "This device api is below 29.", Toast.LENGTH_SHORT).show()
         }
@@ -173,19 +197,34 @@ fun CustomVibrationScreen(
         Text(text = "Vibrate strength (1-255)")
         Spacer(modifier = Modifier.width(4.dp))
         Row {
-            Slider(modifier = Modifier.weight(1f), enabled = defaultStrength.not(), value = strengthInput.toFloat(), onValueChange = { strengthInput = it.toInt() }, valueRange = 1f..255f)
+            Slider(
+                modifier = Modifier.weight(1f),
+                enabled = defaultStrength.not(),
+                value = strengthInput.toFloat(),
+                onValueChange = { strengthInput = it.toInt() },
+                valueRange = 1f..255f
+            )
             Spacer(modifier = Modifier.width(4.dp))
-            Text(modifier = Modifier.align(Alignment.CenterVertically), text = strengthInput.toString(), style = TextStyle.Default.copy(fontWeight = FontWeight.Bold))
+            Text(
+                modifier = Modifier.align(Alignment.CenterVertically),
+                text = strengthInput.toString(),
+                style = TextStyle.Default.copy(fontWeight = FontWeight.Bold)
+            )
         }
         Spacer(modifier = Modifier.width(4.dp))
         Row {
-            Text(modifier = Modifier
-                .weight(1f)
-                .align(Alignment.CenterVertically),text = "Default strength")
+            Text(
+                modifier = Modifier
+                    .weight(1f)
+                    .align(Alignment.CenterVertically), text = "Default strength"
+            )
             Switch(checked = defaultStrength, onCheckedChange = { defaultStrength = it })
         }
+        Spacer(modifier = Modifier.height(16.dp))
+        CustomButton(
+            text = "Vibrate",
+            onClick = { onVibrate(durationInput, strengthInput, defaultStrength) })
         Spacer(modifier = Modifier.height(24.dp))
-        CustomButton(text = "Vibrate", onClick = { onVibrate(durationInput, strengthInput, defaultStrength) })
         CustomButton(text = "Back", onClick = onBack)
     }
 }
@@ -202,12 +241,17 @@ fun DefaultVibrationScreen(
     Column(
         modifier = modifier
     ) {
-        Text(modifier = Modifier.fillMaxWidth(), text = "This options is only support for Android API 29 or above.", textAlign = TextAlign.Center)
+        Text(
+            modifier = Modifier.fillMaxWidth(),
+            text = "This options is only support for Android API 29 or above.",
+            textAlign = TextAlign.Center
+        )
         Spacer(modifier = Modifier.height(24.dp))
         CustomButton(text = "Effect Click", onClick = onClickVibration)
         CustomButton(text = "Effect Double Click", onClick = onDoubleClickVibration)
         CustomButton(text = "Effect Heavy Click", onClick = onHeavyClickVibration)
         CustomButton(text = "Effect Tick Click", onClick = onTickVibration)
+        Spacer(modifier = Modifier.height(24.dp))
         CustomButton(text = "Back", onClick = onBack)
     }
 }
